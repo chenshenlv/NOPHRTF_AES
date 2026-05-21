@@ -1,0 +1,10 @@
+augment_data/
+
+data/*
+!data/.gitkeep
+
+result/*
+!result/.gitkeep
+
+saved_model/*
+!saved_model/.gitkeep

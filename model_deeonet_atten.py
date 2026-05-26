@@ -2,7 +2,6 @@ import torch
 from torch import nn
 from FourierNet import *
 from pointnet2 import *
-from DGCNN import *
 from FNN import LinearFNN as FNN
 from Cross_atten import PointTokenCrossAttn
 
@@ -50,7 +49,7 @@ class DeepONet(nn.Module):
         cond_dim += 3 if "src_l" in self.cond_use else 0
         self.decoder_enable = decoder_enable
         self.num_outputs = num_outputs
-        self.branch_cnn = self.build_branch_cnn(layer_sizes_branch, "point")
+        self.branch_cnn = self.build_branch_cnn(layer_sizes_branch, "pointmsg")
         self.branch_merge = self.build_branch_merge(layer_sizes_branch)
         self.trunk = self.build_trunk(layer_sizes_trunk, "Fourier_FNN")
         self.cross_atten = self.build_cross_atten(film_on,cond_dim)
@@ -74,15 +73,6 @@ class DeepONet(nn.Module):
             cnn_config = branch_config["point"]
             cnn = PointNetmsg_sem(latent_size=cnn_config["latent_size"])
         
-        if cnn_type == "dgcnn":
-            cnn_config = branch_config["point"]
-            cnn = GraphPointCloudEncoder(
-                k=20,
-                d_point=512,
-                d_global=1024,
-                use_dynamic_graph=True,
-                mode="point"
-            )
         
         if cnn_type == "Fourier_UFNN":
             cnn_config = branch_config["point"]

@@ -440,138 +440,6 @@ class ModelLowFTrainer():
         # np.save(os.path.join(self.result_path, "predicts_new.npy"), y_pred)
         torch.cuda.synchronize()
 
-    # def prediction(self, model_name):
-    #     x_test, y_test = self._build_predict_data()
-    #     x_fre,x_pt,x_eval,x_src_l,x_src_r = x_test[0],x_test[1],x_test[2],x_test[3],x_test[4]
-    #     freq_min = 100.0
-    #     freq_max = 22000.0
-    #     x_fre = ((x_fre+1)*100 - freq_min) / (freq_max - freq_min)
-    #     y_test_d = torch.from_numpy(y_test).to(device=self.device, dtype=torch.float32, non_blocking=True)
-    #     n_sub = y_test.shape[0]
-    #     n_eval_loc = y_test.shape[1] ## x[3] has 2*n_loc
-    #     n_freq = x_test[0].shape[0]
-    #     scaler = Scaler(
-    #             y=y_test_d,itd=None,
-    #             hrtf_scaler_path="./Scaler/hrtf_scaler_temp_pred",
-    #             )
-    #     scaler.init_scalers(True)
-
-    #     pts = [
-    #         np.asarray(x_pt[i, 0], dtype=np.float32) for i in range(n_sub)
-    #     ]
-    #     cent = [
-    #         np.asarray(x_pt[i, 1], dtype=np.float32) for i in range(n_sub)
-    #     ]
-
-    #     # center = np.concatenate([self.test_x[3],self.test_x[4]],axis=1)
-    #     pt_resample = np.zeros((n_sub,6,5000),dtype=np.float32)
-    #     for i in range(n_sub):
-    #         pt_i = pts[i]
-    #         center_i = cent[i]
-    #         down = grading_resample(pt_i, center_i, 5000, 0.6)
-    #         # down = uniform_resample_torch(pt_i,5000)
-    #         pt_resample[i] = down.T
-
-        
-    #     xyz = pt_resample[:,:3,:]
-    #     mu = xyz.mean(axis=2, keepdims=True)
-    #     xyz_c = xyz - mu
-    #     scale = np.linalg.norm(xyz_c, axis=1).max(axis=1, keepdims=True)
-    #     scale = scale[:, :, None].astype(np.float32)   # (B,1,1)
-    #     xyz_n = xyz_c / scale
-    #     resample = np.concatenate([xyz_n, pt_resample[:, 3:, :]], axis=1)
-    #     x_eval = np.broadcast_to(x_eval[None, :, :], (n_sub, n_eval_loc, 3)).copy() #(B,n_loc,3)
-    #     x_eval = (x_eval - mu.transpose(0, 2, 1)) / scale
-    #     x_eval_expanded = np.repeat(x_eval, n_freq, axis=1)        # (B,n_loc*n_freq,3)
-    #     mu_vec = mu[:, :, 0]                                       # (B,3)
-    #     scale_vec = scale[:, 0, 0][:, None]                        # (B,1)
-    #     src_l = (x_src_l - mu_vec) / scale_vec
-    #     src_r = (x_src_r - mu_vec) / scale_vec
-
-    #     x_fre_expanded = np.tile(x_fre.reshape(-1, 1), (n_eval_loc, 1)) #(n_loc*n_freq,1)
-    #     x_fre_expanded = np.broadcast_to(x_fre_expanded[None, :, :], (n_sub, n_eval_loc*n_freq, 1)).copy() #(B,n_loc*n_freq,1)
-    #     trunk_combined = np.concatenate([x_eval_expanded, x_fre_expanded], axis=-1) #(B,n_loc*n_freq,4)
-
-    #     ## test scalar
-    #     n_sub_test = y_test.shape[0]
-    #     y_test_norm = scaler.normalize_hrtf(y_test_d)
-    #     y_test_rever = scaler.inverse_hrtf(y_test_norm,n_sub=n_sub_test,n_loc=n_eval_loc,n_freq=220,n_dim=2)
-    #     y_test_rever_h = y_test_rever.cpu().numpy()
-    #     error = np.mean(np.abs(y_test-y_test_rever_h))
-    #     print(f'The error from scalar is: {error}')
-        
-    #     assert n_freq>1, "number of frequencies smaller than 1"
-    #     net = self._build_net()
-    #     ckpt_path = os.path.join(self.model_save_path, model_name)
-    #     print(f'Load model parameters from: {ckpt_path}')
-    #     checkpoint = torch.load(ckpt_path, map_location=torch.device(self.device), weights_only=True)
-    #     net.load_state_dict(checkpoint["model_state_dict"])
-    #     for param in net.parameters():
-    #         param.requires_grad = False
-    #     net.eval()
-    #     trunk_combined = torch.as_tensor(trunk_combined,device=self.device)
-    #     pt = torch.as_tensor(resample,device=self.device)         # keep on CPU for slicing → move per batch
-    #     x_source_l = torch.as_tensor(src_l,device=self.device)
-    #     x_source_r = torch.as_tensor(src_r,device=self.device)
-    #     mu = torch.as_tensor(mu.transpose(0, 2, 1),device=self.device)
-    #     scale = torch.as_tensor(np.reshape(scale,(n_sub,1)),device=self.device)
-    #     N = n_sub
-    #     # N = 1
-
-    #     outputs = []
-    #     start = time.time()
-    #     batch_size = 10
-    #     ctx = torch.inference_mode()
-    #     with ctx:
-    #         for s in range(0, N, batch_size):
-    #             e = min(s + batch_size, N)
-
-    #             # move the big slice only
-    #             trunk_b = trunk_combined[s:e]
-    #             pt_b = pt[s:e]
-    #             x_source_l_b = x_source_l[s:e]
-    #             x_source_r_b = x_source_r[s:e]
-    #             mu_b = mu[s:e]
-    #             scale_b= scale[s:e]
-
-    #             inputs_b = (trunk_b, pt_b,x_source_l_b,x_source_r_b,mu_b,scale_b)
-
-    #             try:
-    #                 y_b = net(*inputs_b)
-    #             except TypeError:
-    #                 y_b = net(inputs_b)
-
-    #             outputs.append(y_b.detach().to("cpu"))
-    #         del y_b, pt_b
-    #     total_time = time.time() - start
-    #     # Concatenate along the batch dimension (assumes batch is dim 0)
-    #     y_pred_t = torch.cat(outputs, dim=0)
-    #     y_pred_t = torch.stack((y_pred_t,y_pred_t),dim=-1)
-    #     y_pred_t = y_pred_t.reshape(n_sub,n_eval_loc,n_freq,2)
-    #     print(f"Prediction time: {total_time:.2f}s  |  y_pred shape={tuple(y_pred_t.shape)}")
-    #     if n_sub > 100:
-    #         n_sub_ = 100
-    #         y_pred_t = y_pred_t[:n_sub_, :]
-    #         y_test = y_test[:n_sub_,:]
-
-    #     # reshape by every feature scaler
-    #     y_pred_t = scaler.inverse_hrtf(y_pred_t,n_sub=n_sub, n_loc=n_eval_loc,n_freq=n_freq,n_dim=2)
-    #     # y_test = scaler.normalize_hrtf(y_test).reshape(n_sub,-1)
-    #     y_pred = y_pred_t.cpu().numpy()
-    #     y_pred = np.reshape(y_pred,(-1,n_eval_loc,n_freq,2))
-    #     y_test = np.reshape(y_test,(-1,n_eval_loc,n_freq,2))
-    #     # y_pred = np.reshape(y_pred,(-1,n_eval_loc,120,4))
-    #     # y_test = np.reshape(y_test,(-1,n_eval_loc,120,4))
-    #     mse = mean_squared_error(y_test, y_pred)
-    #     # calculate the lsd
-    #     LSD_loss_l = LSD_l_mag_db(y_pred,y_test)
-    #     LSD_loss_r = LSD_r_mag_db(y_pred,y_test)
-    #     print(f'The LSD_l deviation from Test is: {LSD_loss_l}')
-    #     print(f'The LSD_r deviation from Test is: {LSD_loss_r}')
-    #     os.makedirs(self.result_path, exist_ok=True)
-    #     # np.save(os.path.join(self.result_path, "gt_new.npy"), y_test)
-    #     # np.save(os.path.join(self.result_path, "predicts_new.npy"), y_pred)
-    #     torch.cuda.synchronize()
 
 @contextmanager
 def trainer_ctx(cfg):
@@ -651,10 +519,10 @@ if __name__ == "__main__":
                 "sub": "", #small_ or ""
                 "type": datatype  # simu / msr /msr-ffmp/"msr_44_noitd"/"msr_44_ff"
             },
-        "model save path": "VAE/saved_model",
+        "model save path": "saved_model",
         "model name": "model_point_single"+ database +"_"+ datatype+ "_" + pt+ ".pt",
-        "data save folder": "./model_point/data/"+ database +"/dis_weighted/mag/raw/"+datatype+"/" + pt +"/",
-        "ae_path":"VAE/saved_model",
+        "data save folder": "data/AES/5sets/",
+        "ae_path":"saved_model",
         "latent_dim":32,
         "encoder_hidden":[128,64],
         "decoder_hidden":[64,128],
@@ -664,7 +532,7 @@ if __name__ == "__main__":
     
         "hrtf scaler path": "./Scaler/hrtf_scaler_temp", 
         "temp model path": "model_point_single"+ database +"_"+ datatype+ "_" + pt +".pt",
-        "results path": "VAE/result/"+ database +"/dis_weighted/" + pt + "/",
+        "results path": "result/"+ database +"/dis_weighted/" + pt + "/",
         "iterations": 5_000,
         "epochs": 100,
         "batch size": [16,128],#default is [32,330] for UHM

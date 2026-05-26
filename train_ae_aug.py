@@ -74,7 +74,7 @@ class NumpyDataset(Dataset):
     def __getitem__(self, idx):
         return self.array[idx]
 
-class VAE():
+class AE():
     def __init__(self, args: argparse.Namespace):
         self.args = args
         self.device = self.args.device
@@ -329,14 +329,14 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Train FNN AE on HRTF magnitude data.")
     parser.add_argument(
         "--train-data",
-        default="VAE/augment_data/y_train.sav",
+        default="augment_data/y_train.sav",
         help="Path to .npy/.npz data.",
     )
     parser.add_argument("--data-key", default=None, help="NPZ key for train data.")
-    parser.add_argument("--val-data", default="VAE/augment_data/y_val.sav", help="Optional .npy/.npz/.sav val data.")
+    parser.add_argument("--val-data", default="augment_data/y_val.sav", help="Optional .npy/.npz/.sav val data.")
     parser.add_argument("--val-key", default=None, help="NPZ key for val data.")
     parser.add_argument("--val-ratio", type=float, default=0.1)
-    parser.add_argument("--test-data", default="VAE/augment_data/y_val.sav", help="Optional .npy/.npz/.sav val data.")
+    parser.add_argument("--test-data", default="augment_data/y_val.sav", help="Optional .npy/.npz/.sav val data.")
     parser.add_argument("--test-key", default=None, help="NPZ key for val data.")
     parser.add_argument("--latent-dim", type=int, default=64)
     parser.add_argument(
@@ -362,7 +362,7 @@ def parse_args():
     parser.add_argument("--standardize",default=True, action="store_true")
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--output-dir", default="VAE/saved_model")
+    parser.add_argument("--output-dir", default="saved_model")
     return parser.parse_args()
 
 
@@ -375,20 +375,20 @@ if __name__ == "__main__":
     input_augment = False
     # base_folder = "./model_point/data/AXD/AE/mag/raw/msr_44_ff_ref_/5k/"
     # base_folder = "./model_point/data/AXD/dis_weighted/mag/raw/msr_44_ff/5k/"
-    base_folder = "VAE/data/AES/5sets/"
+    base_folder = "data/AES/5sets/"
     if preprocess:
         HRTF_file_path = base_folder + "y_train.sav"
         inputs_file_path = base_folder +  "X_train.sav"
         H_processed = preprocess_HRTF(HRTF_file_path, inputs_file_path,input_augment)
-        save_path = "VAE/augment_data/y_train.sav"
+        save_path = "augment_data/y_train.sav"
         dump(H_processed, save_path)
         HRTF_file_path = base_folder + "y_val.sav"
         inputs_file_path = base_folder + "X_val.sav"
         H_processed = preprocess_HRTF(HRTF_file_path, inputs_file_path,input_augment)
-        save_path = "VAE/augment_data/y_val.sav"
+        save_path = "augment_data/y_val.sav"
         dump(H_processed, save_path)
         print(f"Preprocessed HRTF saved to {save_path}")
-    Model = VAE(args=args)
+    Model = AE(args=args)
     try:
         if train:
             Model.train()

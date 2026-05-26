@@ -48,7 +48,7 @@ class PointTokenCrossAttn(nn.Module):
         nn.init.zeros_(self.gate[-2].weight)
         nn.init.constant_(self.gate[-2].bias, -4.0)
 
-        self.alpha = nn.Parameter(torch.tensor([0.5])) 
+        self.alpha = nn.Parameter(torch.tensor([1.0])) 
         self.drop_path_rate = drop_path_rate
 
         self.norm1 = nn.LayerNorm(C_attn)
@@ -167,45 +167,21 @@ class PointTokenCrossAttn(nn.Module):
         """
         # P: [B,Cp,N] -> [B,N,Cp]
         Pn = P.transpose(1, 2).contiguous()
-        # # Pn = torch.zeros_like(Pn)
-        # # Pn = P[:,None,:]
+      
         loc = T[:,:,256:]
         loc_feats = T[:,:,:256]
-        # loc_feats = torch.zeros_like(loc_feats)
-        # Pn = T.transpose(1, 2).contiguous()
-        # loc = P[:,:,256:]
-        # loc_feats = P[:,:,:256]
-        # loc_feats = torch.zeros_like(loc_feats)
-
-        # print('Check Q before projection:')
-        # check_trunk_latent(T)
-        # if self.film_branch is not None:
-        #     Pn = self.film_branch(Pn, cond)  # broadcast over N_pts
-        # if self.film_trunk is not None:
-        #     loc_feats = self.film_trunk(loc_feats, cond)     # broadcast over N_eval
+       
 
         # Project into attention space
         KVm = self.p_proj(Pn)            # [B,N,C_attn]
-        # K = KVm + self.get_sinusoidal_encoding(x_pts.transpose(1, 2).contiguous(), KVm.shape[-1])
-        K_ = self.apply_rope(KVm,x_pts.transpose(1,2))
+        K_ = KVm + self.get_sinusoidal_encoding(x_pts.transpose(1, 2).contiguous(), KVm.shape[-1])
+        # K_ = self.apply_rope(KVm,x_pts.transpose(1,2))
         Q = self.t_proj(loc_feats)               # [B,L,C_attn]
-        # Q = Q + self.get_sinusoidal_encoding(loc, Q.shape[-1])
-        Q_ = self.apply_rope(Q,loc)
+        Q_ = Q + self.get_sinusoidal_encoding(loc, Q.shape[-1])
+        # Q_ = self.apply_rope(Q,loc)
         # Q = Q + self.q_mlp(Q)
         # Q = self.knn_neighbor_augment(Q, loc, k=8, gamma=0.1)
         
-
-        #----- Swap Q and K --------
-        # Q_, K_ = K_, Q_
-
-
-        # --- TEMPERATURE TRICK ---
-        # temp = 0.5  # T < 1.0 sharpens the attention
-        # inv_sqrt_temp = 1.0 / math.sqrt(temp)
-        
-        # # Pre-scale Q and K before passing to MultiheadAttention
-        # Q = Q * inv_sqrt_temp
-        # K = K * inv_sqrt_temp
         #-----------Check-------------#
         # print('Check Q:')
         # check_trunk_latent(Q)
@@ -220,8 +196,8 @@ class PointTokenCrossAttn(nn.Module):
         # print('Check A:')
         # check_trunk_latent(attn_out)
         gated_attn = self.alpha * attn_out
-        res_connection = drop_path(gated_attn, self.drop_path_rate, self.training)
-        x = self.norm1(Q + res_connection)
+        # res_connection = drop_path(gated_attn, self.drop_path_rate, self.training)
+        x = self.norm1(Q + gated_attn)
         # Transformer block
         # x = self.norm1(Q + attn_out)
         x = self.norm2(x + self.ffn(x))
@@ -241,80 +217,6 @@ class PointTokenCrossAttn(nn.Module):
         # check_trunk_latent(Z)
         return Z
 
-
-# class PointTokenCrossAttn(nn.Module):
-#     def __init__(self, C_point: int, C_trunk: int, C_attn: int,
-#                  D_out: int, n_heads: int = 8, M: int = 1024, dropout: float = 0.0,
-#                 cond_dim: int = 1, film_hidden: int = 128, film_on=("",""),n_experts=4,):
-#         super().__init__()
-#         self.n_experts = n_experts
-#         self.C_attn = C_attn
-
-#         self.p_proj = nn.Linear(C_point, C_attn, bias=False)
-#         self.t_proj = nn.Linear(C_trunk, C_attn, bias=False)
-
-#         # Router: token-wise expert weights
-#         self.router = nn.Sequential(
-#             nn.Linear(C_attn, C_attn),
-#             nn.GELU(),
-#             nn.Linear(C_attn, n_experts)
-#         )
-
-#         # Expert cross-attention blocks
-#         self.experts = nn.ModuleList([
-#             nn.MultiheadAttention(
-#                 embed_dim=C_attn,
-#                 num_heads=n_heads,
-#                 dropout=dropout,
-#                 batch_first=True
-#             )
-#             for _ in range(n_experts)
-#         ])
-
-#         self.norm1 = nn.LayerNorm(C_attn)
-#         self.ffn = nn.Sequential(
-#             nn.Linear(C_attn, 4 * C_attn),
-#             nn.GELU(),
-#             nn.Linear(4 * C_attn, C_attn),
-#         )
-#         self.norm2 = nn.LayerNorm(C_attn)
-#         self.out = nn.Linear(C_attn, D_out)
-
-#     def forward(self, P: torch.Tensor, T: torch.Tensor, x_pts:torch.Tensor,  cond=None):
-#         # P: [B,Cp,N] -> [B,N,Cp]
-#         Pn = P.transpose(1, 2).contiguous()
-
-#         # Example split
-#         loc_feats = T[:, :, :256]
-
-#         KVm = self.p_proj(Pn)        # [B,N,C]
-#         Q = self.t_proj(loc_feats)   # [B,L,C]
-
-#         # Router weights
-#         logits = self.router(Q)                  # [B,L,E]
-#         gates = F.softmax(logits, dim=-1)        # [B,L,E]
-
-#         # Expert outputs
-#         expert_outs = []
-#         for expert in self.experts:
-#             A_e, _ = expert(Q, KVm, KVm, need_weights=False)   # [B,L,C]
-#             expert_outs.append(A_e)
-
-#         # Stack: [B,L,E,C]
-#         A = torch.stack(expert_outs, dim=2)
-
-#         # Weighted sum over experts
-#         A_mix = torch.sum(A * gates.unsqueeze(-1), dim=2)      # [B,L,C]
-
-#         x = self.norm1(Q + A_mix)
-#         x = self.norm2(x + self.ffn(x))
-#         Z = self.out(x)
-#         return Z
-
-# def token_scaling(X:torch.Tensor,eps=1e-6):
-#     # X: [B,L,C]
-#     scale = torch.sqrt(X.pow(2).mean(dim=-1, keepdim=True) + eps)
-#     return X / scale
 
 def drop_path(x, drop_prob: float = 0.0, training: bool = False):
     """
@@ -355,74 +257,6 @@ class FiLM(nn.Module):
             gamma = gamma.unsqueeze(1)
             beta  = beta.unsqueeze(1)
         return (1.0 + gamma) * h + beta
-    
-class kernel_base_MultiAtten(nn.Module):
-    def __init__(self, d_emb:int, num_heads:int, hidden:int=64, dropout=0.0):
-        super().__init__()
-        assert d_emb % num_heads == 0, "d_emb must be divisible by num_heads"
-        self.d_emb = d_emb
-        self.num_heads = num_heads
-        self.d_head = d_emb // num_heads
-        self.mlp = nn.Sequential(
-            nn.Linear(1, hidden),
-            nn.GELU(),
-            nn.Linear(hidden, 1)
-        )
-        # one projection per Q, K, V
-        self.dropout = nn.Dropout(dropout)
-
-    def _split_heads(self, x:torch.Tensor):
-        """
-        x: [B, N, d_emb] -> [B, num_heads, N, d_head]
-        """
-        B, N, D = x.shape
-        x = x.view(B, N, self.num_heads, self.d_head)
-        x = x.permute(0, 2, 1, 3)   # [B, H, N, d_head]
-        return x
-
-    def _combine_heads(self, x:torch.Tensor):
-        """
-        x: [B, H, N, d_head] -> [B, N, d_emb]
-        """
-        B, H, L, Dh = x.shape
-        x = x.permute(0, 2, 1, 3).contiguous()  # [B, N, H, d_head]
-        x = x.view(B, L, H * Dh)                # [B, N, d_emb]
-        return x
-
-    def forward(self, Q:torch.Tensor, K:torch.Tensor, V:torch.Tensor, R:torch.Tensor,  mask=None):
-        """
-        R shape: B,L,N
-        """
-        B, L, D = Q.shape
-        _, N, _ = K.shape
-        assert D == self.d_emb
-
-        Q = self._split_heads(Q)  # [B, H, L, d_head]
-        K = self._split_heads(K)  # [B, H, N, d_head]
-        V = self._split_heads(V)  # [B, H, N, d_head]
-
-
-        # scaled dot-product attention
-        # scores = torch.matmul(Q, K.transpose(-2, -1)) / (self.d_head ** 0.5) # scores: [B, H, L, N]
-        psi_r = self.mlp(R.unsqueeze(-1)).squeeze(-1)  # [B, L, N]
-        psi_r = psi_r.unsqueeze(1)  
-        psi_r = psi_r.expand(-1, self.num_heads, -1, -1)  # [B, H, L, N]                 
-        # scores = scores + psi_r
-
-        # attn = torch.softmax(scores, dim=-1)         # [B, H, L, N]
-        # attn = self.dropout(attn)
-        # out = torch.matmul(attn, V)                  # [B, H, N, d_head]
-        out = F.scaled_dot_product_attention(
-        Q, K, V,
-        attn_mask=psi_r,
-        dropout_p=self.dropout.p if self.training else 0.0,
-        is_causal=False
-        )
-
-        out = self._combine_heads(out)               # [B, N, d_emb]
-        return out
-
-
     
 
 

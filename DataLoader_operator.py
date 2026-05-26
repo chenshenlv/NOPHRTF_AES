@@ -169,6 +169,9 @@ class Preprocessor:
         
     
     def preprocess_outputs(self, x_eval, y, input_augment = True):
+        """
+            input_augment: if flip the HRTF according to the mirror locations, and concatenate with original HRTF for training.
+        """
         if input_augment:
             y_mir = mirror_hrtf_sagittal(x_eval, y)
             y = np.concatenate([y[...,0:1], y_mir[...,0:1]], axis=0)
